@@ -1,0 +1,1968 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Analisis de comentarios de peliculas"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Descripcion del problema\n",
+    "\n",
+    "Para este proyecto se busca hacer un análisis de sentimientos sobre los comentarios en español de una película y se espera poder clasificarlos en 'positivo' o negativo'. El conjunto de datos suministrados es un csv con dos columnas, la primera es el comentario en sí, y la segunda es la clasificación que ya se le dio."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Entendimiento del negocio y enfoque analitico\n",
+    "\n",
+    "- #### Oportunidad / Problema de negocio\n",
+    "    La oportunidad que se presenta para este caso es poder definir según un comentario, si se está haciendo una crítica positiva o negativa acerca de la película. \n",
+    "\n",
+    "- #### Enfoque analitico\n",
+    "    El requerimiento desde el punto de vista del aprendizaje automático es clasificar cada comentario en una de dos categorías, positivo o negativo. Para ello se debe utilizar un enfoque de aprendizaje supervisado puesto que los datos ya vienen etiquetados con sus respectivas categorías. De esta forma, se puede entrenar con dichas etiquetas al modelo. Con el fin de lograr este objetivo se limpian los datos, se entrena el modelo y se prueba.\n",
+    "\n",
+    "- #### Organización y rol dentro de ella que se beneficia con la oportunidad definida\n",
+    "    La organización que se beneficia con la oportunidad definida es la industria del entretenimiento, particularmente las empresas dedicadas a hacer producciones cinematográficas. El rol de los productores es quien más gana en el asunto, pues les será más fácil filtrar aquellos comentarios negativos y entender qué se podría mejorar o mirar los comentarios positivos para ver qué aspectos fueron los que más le gustaron al público y replicarlos para siguientes producciones. En general, el poder separar los comentarios positivos de los negativos permite un mejor entendimiento de que aspectos de le película fueron los más impactantes para replicarlos o no en próximas películas.\n",
+    "\n",
+    "- #### Tecnicas y algoritmos utilizados\n",
+    "    Primeramente, se utilizará el algoritmo de procesamiento de lenguaje natural Naive Bayes, puesto que es el más común para este tipo de tareas. Asimismo, se emplearán otros dos algoritmos de clasificación, Random Forest y KNN."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1. Importacion de librerias"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "import re\n",
+    "\n",
+    "# Librerias para el preprocesamiento\n",
+    "import spacy\n",
+    "nlp = spacy.load('es_core_news_sm')\n",
+    "\n",
+    "# Librerias para transformar los datos\n",
+    "from sklearn.preprocessing import FunctionTransformer\n",
+    "from sklearn.base import BaseEstimator, TransformerMixin\n",
+    "\n",
+    "from sklearn.datasets import load_iris\n",
+    "from sklearn.decomposition import PCA\n",
+    "\n",
+    "# Librerias para vectorizar \n",
+    "from sklearn.feature_extraction.text import TfidfVectorizer\n",
+    "from sklearn.feature_extraction.text import CountVectorizer\n",
+    "from sklearn.feature_extraction.text import TfidfTransformer\n",
+    "\n",
+    "# Librerias para el modelo\n",
+    "from sklearn.model_selection import train_test_split\n",
+    "from sklearn.naive_bayes import MultinomialNB\n",
+    "from sklearn.ensemble import RandomForestClassifier\n",
+    "from sklearn.neighbors import KNeighborsClassifier\n",
+    "\n",
+    "# Librerias para la evaluacion\n",
+    "from sklearn.metrics import make_scorer, accuracy_score, precision_score, recall_score, f1_score\n",
+    "from sklearn.model_selection import cross_val_score\n",
+    "\n",
+    "# Librerias para la busqueda de hiperparametros\n",
+    "from sklearn.model_selection import GridSearchCV\n",
+    "\n",
+    "# Librerias para el pipeline\n",
+    "from sklearn.pipeline import Pipeline\n",
+    "\n",
+    "# Librerias para exportar el modelo\n",
+    "from joblib import dump, load\n",
+    "\n",
+    "from sklearn.decomposition import TruncatedSVD\n",
+    "from sklearn.neighbors import KNeighborsClassifier\n",
+    "from sklearn.feature_extraction.text import TfidfVectorizer\n",
+    "from sklearn.datasets import fetch_20newsgroups\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2. Carga de datos"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Carga del csv entrenamiento\n",
+    "file_name = './data/MovieReviews.csv'\n",
+    "raw = pd.read_csv(file_name, sep=',')\n",
+    "reviews = raw.copy()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Carga del csv prueba\n",
+    "file_name = './data/MovieReviewsPruebas.csv'\n",
+    "raw = pd.read_csv(file_name, sep=',')\n",
+    "reviews_test = raw.copy()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. Entendimiento de los datos"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Lo primero es ver la cantidad de datos que hay para entrenar el modelo, puesto que es importante comprender que entre mas datos se tengan, mejor sera la aproximacion que se obtenga. Para este caso se tiene una cantidad considerablemente buena de datos. "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "(5000, 3)"
+      ]
+     },
+     "execution_count": 6,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "reviews.shape"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Se debe revisar el tipo de datos que hay para cada columna."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "Unnamed: 0      int64\n",
+       "review_es      object\n",
+       "sentimiento    object\n",
+       "dtype: object"
+      ]
+     },
+     "execution_count": 7,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Tipo de variables\n",
+    "reviews.dtypes"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Para rectificar que efectivamente la clasificacion sea de 'positivo' y 'negativo' se revisan los valores que hay en la columna categorica."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "negativo    2500\n",
+       "positivo    2500\n",
+       "Name: sentimiento, dtype: int64"
+      ]
+     },
+     "execution_count": 8,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Ver aproximadamente la cantidad de datos por la columna sentimiento\n",
+    "reviews['sentimiento'].value_counts()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Tambien se revisa la cantidad de nulos que pueda haber en el data set para ver cuantos datos se pierden al tener que eliminarlos. Para este caso no hay nulos."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "Unnamed: 0     0\n",
+       "review_es      0\n",
+       "sentimiento    0\n",
+       "dtype: int64"
+      ]
+     },
+     "execution_count": 9,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Verificar la cantidad de datos nulos \n",
+    "reviews.isnull().sum()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Finalmente se echa un vistazo a como se ven los datos."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>Unnamed: 0</th>\n",
+       "      <th>review_es</th>\n",
+       "      <th>sentimiento</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>0</td>\n",
+       "      <td>Si está buscando una película de guerra típica...</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>1</td>\n",
+       "      <td>Supongo que algunos directores de películas de...</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>2</td>\n",
+       "      <td>Es difícil contarle más sobre esta película si...</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "   Unnamed: 0                                          review_es sentimiento\n",
+       "0           0  Si está buscando una película de guerra típica...    positivo\n",
+       "1           1  Supongo que algunos directores de películas de...    positivo\n",
+       "2           2  Es difícil contarle más sobre esta película si...    positivo"
+      ]
+     },
+     "execution_count": 10,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "reviews.head(3)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4. Creacion de los pipelines para cada algoritmo"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Transformadores"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Lo primero que se crea es un transformador para el preprocesamiento de los datos. Debido a que estamos tratando con frases en español se quiere estandarizar todos los comentarios aplicandoles ciertos cambios. De esta forma, se pasa todo a minusculas, se eliminan las tildes para evitar discrimanaciones incorrectas por errores de ortografia, se eliminan los numeros, signos de puntuacion y se eliminan las palabras vacias. Estas son palabras que no aportan significado al contexto, como lo son conectores, articulos y demas. Para ello se utilizo la libreria spacy."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Funcion para limpiar el texto utilizando spacy\n",
+    "def clean_text(text):\n",
+    "    # Pasar a minusculas\n",
+    "    text = text.lower()\n",
+    "\n",
+    "    # Eliminar las tildes\n",
+    "    text = re.sub(r'[á]', 'a', text)\n",
+    "    text = re.sub(r'[é]', 'e', text)\n",
+    "    text = re.sub(r'[í]', 'i', text)\n",
+    "    text = re.sub(r'[ó]', 'o', text)\n",
+    "    text = re.sub(r'[ú]', 'u', text)\n",
+    "    \n",
+    "    # Eliminar los numeros\n",
+    "    text = re.sub(r'\\d+', ' ', text)\n",
+    "\n",
+    "    # Eliminar los signos de puntuacion\n",
+    "    text = re.sub(r'[^\\w\\s]', ' ', text)\n",
+    "\n",
+    "    # Tokenizar\n",
+    "    tokens = nlp(text)\n",
+    "\n",
+    "    # Eliminar stopwords\n",
+    "    tokens = [token.text for token in tokens if not token.is_stop]\n",
+    "\n",
+    "    # Unir los tokens\n",
+    "    text = ' '.join(tokens)\n",
+    "\n",
+    "    return text"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4.1 Naive Bayes (Juan Diego Calixto)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Pipeline"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "La creacion del pipeline se hace unicamente con dos procesos. \n",
+    "\n",
+    "El primero es el transformador de los datos que estandariza los comentarios como se especifico anteriormente, utilizando un TFIDFVECTORIZER. Este transformador lo que hace es tokenizar cada comentario separándolo por palabras y asignándole un puntaje a cada palabra según su número de apariciones en todos los comentarios, pero aquellas palabras que estén presentes en todos los comentarios y no sirvan para identificar si son positivos o negativos el TFIDF les baja al puntaje para que no afecten el entrenamiento del modelo. Asimismo, se delimitó el número de palabras significantes a 1800 puesto que luego de hacer pruebas fue el número máximo que dio mejor resultado.\n",
+    "\n",
+    "El segundo proceso ya es la creación del modelo utilizando Naive Bayes. Se le paso por parametro un alpha de 1 para sumarle a todos los puntajes +1. De esta forma aquellas palabras que tenían un puntaje de 0 y que podian afectar la probabilidad, ya no sean un problema."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "pipe = Pipeline([\n",
+    "                ('tfidf', TfidfVectorizer(preprocessor=clean_text, max_features=1800)),\n",
+    "                ('model', MultinomialNB(alpha=1.0))\n",
+    "])"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 5.1 Ejecucion y análisis Naive Bayes"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Entrenamiento del modelo"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Se hace una separacion de los datos en entrenamiento y prueba. El X son las variables de decisión y el Y lo que se busca predecir."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Separacion de las variables de decision y de prediccion\n",
+    "X = reviews['review_es']\n",
+    "Y = reviews['sentimiento']"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "La separación se hace 80% para etrenamiento y 20% para prueba."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Creación de los conjuntos de entrenamiento y prueba\n",
+    "X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=0)\n",
+    "y_train = y_train.values.ravel()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Se le pasa al pipeline los datos de entrenamiento"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Entrenamiento del modelo\n",
+    "model = pipe.fit(X_train, y_train)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Analisis de metricas"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Realizar predicciones en el conjunto de entrenaiento y prueba\n",
+    "y_train_pred = model.predict(X_train)\n",
+    "y_test_pred = model.predict(X_test)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Calcular las métricas de evaluación\n",
+    "NB_train_accuracy = accuracy_score(y_train, y_train_pred)\n",
+    "NB_train_precision = precision_score(y_train, y_train_pred, pos_label='positivo')\n",
+    "NB_train_recall = recall_score(y_train, y_train_pred, pos_label='positivo')\n",
+    "NB_train_f1 = f1_score(y_train, y_train_pred, pos_label='positivo')\n",
+    "\n",
+    "NB_test_accuracy = accuracy_score(y_test, y_test_pred)\n",
+    "NB_test_precision = precision_score(y_test, y_test_pred, pos_label='positivo')\n",
+    "NB_test_recall = recall_score(y_test, y_test_pred, pos_label='positivo')\n",
+    "NB_test_f1 = f1_score(y_test, y_test_pred, pos_label='positivo')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Según las métricas podemos ver que el modelo se ajustó bastante bien a los datos pero no hizo un sobreajuste. Si bien son un poco más altas las métricas entrenamiento no son exageradas con respecto a las del conjunto de prueba. Entonces, se puede concluir que el modelo se ajustó considerablemente bien a los datos y puede predecir con un porcentaje de acierto de al rededor del 80% la clasificaciín de un comentario para esa película."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "\n",
+      "Metricas del conjunto de entrenamiento:\n",
+      "Accuracy: 0.869\n",
+      "Precision: 0.8592023065833734\n",
+      "Recall: 0.8855869242199108\n",
+      "F1 score: 0.8721951219512195\n",
+      "\n",
+      "Metricas del conjunto de prueba:\n",
+      "Accuracy: 0.81\n",
+      "Precision: 0.7963340122199593\n",
+      "Recall: 0.8128898128898129\n",
+      "F1 score: 0.8045267489711934\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Imprimir las métricas de evaluación\n",
+    "print('\\nMetricas del conjunto de entrenamiento:')\n",
+    "print(\"Accuracy:\",  NB_train_accuracy)\n",
+    "print(\"Precision:\", NB_train_precision)\n",
+    "print(\"Recall:\",    NB_train_recall)\n",
+    "print(\"F1 score:\",  NB_train_f1)\n",
+    "\n",
+    "# Imprimir las métricas de evaluación\n",
+    "print('\\nMetricas del conjunto de prueba:')\n",
+    "print(\"Accuracy:\",  NB_test_accuracy)\n",
+    "print(\"Precision:\", NB_test_precision)\n",
+    "print(\"Recall:\",    NB_test_recall)\n",
+    "print(\"F1 score:\",  NB_test_f1)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Búsqueda de hiperparámetros\n",
+    "\n",
+    "Quizás con un poder computacional mucho mayor se pueda hacer la busqueda de hiperparámetros"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "\"\\n# Definir los valores para los hiperparametros\\nparam_grid = {\\n    'tfidf__max_features': [100, 500, 1000],\\n    'model__alpha': [1.0],\\n}\\n\\n# Crear un objeto GridSearchCV\\ngrid_search = GridSearchCV(pipe, param_grid, cv=5)\\n\\n# Ajustar el modelo con los hiperparametros\\ngrid_search.fit(X_train, y_train)\\n\\n# Obtener los mejores hiperparametros\\nbest_params = grid_search.best_params_\\nprint('Valores óptimos de los hiperparámetros:', best_params)\\n\""
+      ]
+     },
+     "execution_count": 19,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "'''\n",
+    "# Definir los valores para los hiperparametros\n",
+    "param_grid = {\n",
+    "    'tfidf__max_features': [100, 500, 1000],\n",
+    "    'model__alpha': [1.0],\n",
+    "}\n",
+    "\n",
+    "# Crear un objeto GridSearchCV\n",
+    "grid_search = GridSearchCV(pipe, param_grid, cv=5)\n",
+    "\n",
+    "# Ajustar el modelo con los hiperparametros\n",
+    "grid_search.fit(X_train, y_train)\n",
+    "\n",
+    "# Obtener los mejores hiperparametros\n",
+    "best_params = grid_search.best_params_\n",
+    "print('Valores óptimos de los hiperparámetros:', best_params)\n",
+    "'''"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 6.1 Exportar el modelo Naive Bayes"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Finalmente se exporta el modelo para que pueda ser utilizado en otro conjunto de datos"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "['pipelineNaiveBayes.joblib']"
+      ]
+     },
+     "execution_count": 20,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Nombre del archivo donde se guardará el modelo\n",
+    "pipe_file_name = 'pipelineNaiveBayes.joblib'\n",
+    "\n",
+    "# Guardar el modelo\n",
+    "dump(model, pipe_file_name)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "Pipeline(steps=[('tfidf',\n",
+       "                 TfidfVectorizer(max_features=1800,\n",
+       "                                 preprocessor=<function clean_text at 0x7ff3586013a0>)),\n",
+       "                ('model', MultinomialNB())])"
+      ]
+     },
+     "execution_count": 21,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Cargar el modelo\n",
+    "test_model = load(pipe_file_name)\n",
+    "test_model"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Se rectifica que efectivamente el modelo este prediciendo correctamente."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Clasificar los datos de prueba\n",
+    "reviews_test['sentimiento_NaiveBayes'] = test_model.predict(reviews_test['review_es'])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 23,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>Unnamed: 0</th>\n",
+       "      <th>review_es</th>\n",
+       "      <th>sentimiento_NaiveBayes</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>0</td>\n",
+       "      <td>La saga medieval alemana de Fritz Lang continú...</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>1</td>\n",
+       "      <td>Este anime es una visita obligada para los fan...</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>2</td>\n",
+       "      <td>Esta es una de las mejores películas para masc...</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>3</td>\n",
+       "      <td>Cuando se lanzó su DVD, llegué al mercado y lo...</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>4</td>\n",
+       "      <td>No me he reído tan duro en una película en muc...</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>...</th>\n",
+       "      <td>...</td>\n",
+       "      <td>...</td>\n",
+       "      <td>...</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>295</th>\n",
+       "      <td>295</td>\n",
+       "      <td>1er vimos 2/18/2007 - 4 de 10 (Dir-Leon Leonar...</td>\n",
+       "      <td>negativo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>296</th>\n",
+       "      <td>296</td>\n",
+       "      <td>Desde su título no inspirado a las actuaciones...</td>\n",
+       "      <td>negativo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>297</th>\n",
+       "      <td>297</td>\n",
+       "      <td>Encontré a esta buena película para pasar su t...</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>298</th>\n",
+       "      <td>298</td>\n",
+       "      <td>Solía ​​trabajar en la compañía que originalme...</td>\n",
+       "      <td>negativo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>299</th>\n",
+       "      <td>299</td>\n",
+       "      <td>La dama en cemento es un verdadero curso sobre...</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "<p>300 rows × 3 columns</p>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "     Unnamed: 0                                          review_es  \\\n",
+       "0             0  La saga medieval alemana de Fritz Lang continú...   \n",
+       "1             1  Este anime es una visita obligada para los fan...   \n",
+       "2             2  Esta es una de las mejores películas para masc...   \n",
+       "3             3  Cuando se lanzó su DVD, llegué al mercado y lo...   \n",
+       "4             4  No me he reído tan duro en una película en muc...   \n",
+       "..          ...                                                ...   \n",
+       "295         295  1er vimos 2/18/2007 - 4 de 10 (Dir-Leon Leonar...   \n",
+       "296         296  Desde su título no inspirado a las actuaciones...   \n",
+       "297         297  Encontré a esta buena película para pasar su t...   \n",
+       "298         298  Solía ​​trabajar en la compañía que originalme...   \n",
+       "299         299  La dama en cemento es un verdadero curso sobre...   \n",
+       "\n",
+       "    sentimiento_NaiveBayes  \n",
+       "0                 positivo  \n",
+       "1                 positivo  \n",
+       "2                 positivo  \n",
+       "3                 positivo  \n",
+       "4                 positivo  \n",
+       "..                     ...  \n",
+       "295               negativo  \n",
+       "296               negativo  \n",
+       "297               positivo  \n",
+       "298               negativo  \n",
+       "299               positivo  \n",
+       "\n",
+       "[300 rows x 3 columns]"
+      ]
+     },
+     "execution_count": 23,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Visualizar los resultados\n",
+    "reviews_test"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4.2 Random Forest (Sergio Pardo)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Pipeline"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "La creacion del pipeline se hace unicamente con dos procesos. \n",
+    "\n",
+    "El primero es el transformador que estandariza los comentarios con el mismo proceso que el modelo de Naive Bayes con la funcion 'clean_text'. Sin embargo, este utiliza el metodo de COUNTVECTORIZER que únicamente crea una tabla con las palabras tokenizadas y sus repeticiones a lo largo de todo el conjunto de datos, aquí no se asignan puntajes a las palabras, únicamente se pone la cantidad de veces que aparece.\n",
+    "\n",
+    "El segundo proceso ya es la creacion del modelo utilizando Random Forest. Se emplea este algoritmo pues es una tarea de clasificación y por experiencia consideramos que resultaría adecuada para este proyecto."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 24,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "pipe = Pipeline([\n",
+    "                ('tfidf', CountVectorizer(preprocessor=clean_text)),\n",
+    "                ('model', RandomForestClassifier())\n",
+    "])"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 5.2 Ejecución y análisis Random Forest"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Entrenamiento del modelo"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Se hace una separación de los datos en entrenamiento y prueba. El X son las variables de decision y el Y lo que se busca predecir."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 25,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Separacion de las variables de decision y de prediccion\n",
+    "X = reviews['review_es']\n",
+    "Y = reviews['sentimiento']"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "La separación se hace 80% para etrenamiento y 20% para prueba."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 26,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Creacion de los conjuntos de entrenamiento y prueba\n",
+    "X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=0)\n",
+    "y_train = y_train.values.ravel()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Se le pasa al pipeline los datos de entrenamiento"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 27,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Entrenamiento del modelo\n",
+    "model = pipe.fit(X_train, y_train)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Análisis de metricas"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 28,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Realizar predicciones en el conjunto de entrenaiento y prueba\n",
+    "y_train_pred = model.predict(X_train)\n",
+    "y_test_pred = model.predict(X_test)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 29,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Calcular las metricas de evaluacion\n",
+    "RF_train_accuracy = accuracy_score(y_train, y_train_pred)\n",
+    "RF_train_precision = precision_score(y_train, y_train_pred, pos_label='positivo')\n",
+    "RF_train_recall = recall_score(y_train, y_train_pred, pos_label='positivo')\n",
+    "RF_train_f1 = f1_score(y_train, y_train_pred, pos_label='positivo')\n",
+    "\n",
+    "RF_test_accuracy = accuracy_score(y_test, y_test_pred)\n",
+    "RF_test_precision = precision_score(y_test, y_test_pred, pos_label='positivo')\n",
+    "RF_test_recall = recall_score(y_test, y_test_pred, pos_label='positivo')\n",
+    "RF_test_f1 = f1_score(y_test, y_test_pred, pos_label='positivo')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Según las étricas podemos ver que el modelo se ajustó bastante bien a los datos de entrenamiento al punto de generar un sobreajuste. No obstante, los resultados de evaluación son buenos (se acercan al 80%) Entonces se puede concluir que el modelo se ajustó considerablemente bien a los datos y puede predecir con un porcentaje de acierto de al rededor del 80% la clasificaion de un comentario para esa pelicula."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 30,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "\n",
+      "Metricas del conjunto de entrenamiento:\n",
+      "Accuracy: 1.0\n",
+      "Precision: 1.0\n",
+      "Recall: 1.0\n",
+      "F1 score: 1.0\n",
+      "\n",
+      "Metricas del conjunto de prueba:\n",
+      "Accuracy: 0.775\n",
+      "Precision: 0.7549800796812749\n",
+      "Recall: 0.7879417879417879\n",
+      "F1 score: 0.7711088504577822\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Imprimir las metricas de evaluacion\n",
+    "print('\\nMetricas del conjunto de entrenamiento:')\n",
+    "print(\"Accuracy:\",  RF_train_accuracy)\n",
+    "print(\"Precision:\", RF_train_precision)\n",
+    "print(\"Recall:\",    RF_train_recall)\n",
+    "print(\"F1 score:\",  RF_train_f1)\n",
+    "\n",
+    "# Imprimir las metricas de evaluacion\n",
+    "print('\\nMetricas del conjunto de prueba:')\n",
+    "print(\"Accuracy:\",  RF_test_accuracy)\n",
+    "print(\"Precision:\", RF_test_precision)\n",
+    "print(\"Recall:\",    RF_test_recall)\n",
+    "print(\"F1 score:\",  RF_test_f1)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 6.2 Exportar el modelo Random Forest"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Finalmente se exporta el modelo para que pueda ser utilizado en otro conjunto de datos"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 31,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "['pipelineRandomForest.joblib']"
+      ]
+     },
+     "execution_count": 31,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Nombre del archivo donde se guardara el modelo\n",
+    "pipe_file_name = 'pipelineRandomForest.joblib'\n",
+    "\n",
+    "# Guardar el modelo\n",
+    "dump(model, pipe_file_name)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 32,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "Pipeline(steps=[('tfidf',\n",
+       "                 CountVectorizer(preprocessor=<function clean_text at 0x7ff3586013a0>)),\n",
+       "                ('model', RandomForestClassifier())])"
+      ]
+     },
+     "execution_count": 32,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Cargar el modelo\n",
+    "test_model = load(pipe_file_name)\n",
+    "test_model"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 33,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Clasificar los datos de prueba\n",
+    "reviews_test['sentimiento_RandomForest'] = test_model.predict(reviews_test['review_es'])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 34,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>Unnamed: 0</th>\n",
+       "      <th>review_es</th>\n",
+       "      <th>sentimiento_NaiveBayes</th>\n",
+       "      <th>sentimiento_RandomForest</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>0</td>\n",
+       "      <td>La saga medieval alemana de Fritz Lang continú...</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>1</td>\n",
+       "      <td>Este anime es una visita obligada para los fan...</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>2</td>\n",
+       "      <td>Esta es una de las mejores películas para masc...</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>3</td>\n",
+       "      <td>Cuando se lanzó su DVD, llegué al mercado y lo...</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>4</td>\n",
+       "      <td>No me he reído tan duro en una película en muc...</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>...</th>\n",
+       "      <td>...</td>\n",
+       "      <td>...</td>\n",
+       "      <td>...</td>\n",
+       "      <td>...</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>295</th>\n",
+       "      <td>295</td>\n",
+       "      <td>1er vimos 2/18/2007 - 4 de 10 (Dir-Leon Leonar...</td>\n",
+       "      <td>negativo</td>\n",
+       "      <td>negativo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>296</th>\n",
+       "      <td>296</td>\n",
+       "      <td>Desde su título no inspirado a las actuaciones...</td>\n",
+       "      <td>negativo</td>\n",
+       "      <td>negativo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>297</th>\n",
+       "      <td>297</td>\n",
+       "      <td>Encontré a esta buena película para pasar su t...</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>negativo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>298</th>\n",
+       "      <td>298</td>\n",
+       "      <td>Solía ​​trabajar en la compañía que originalme...</td>\n",
+       "      <td>negativo</td>\n",
+       "      <td>negativo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>299</th>\n",
+       "      <td>299</td>\n",
+       "      <td>La dama en cemento es un verdadero curso sobre...</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "<p>300 rows × 4 columns</p>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "     Unnamed: 0                                          review_es  \\\n",
+       "0             0  La saga medieval alemana de Fritz Lang continú...   \n",
+       "1             1  Este anime es una visita obligada para los fan...   \n",
+       "2             2  Esta es una de las mejores películas para masc...   \n",
+       "3             3  Cuando se lanzó su DVD, llegué al mercado y lo...   \n",
+       "4             4  No me he reído tan duro en una película en muc...   \n",
+       "..          ...                                                ...   \n",
+       "295         295  1er vimos 2/18/2007 - 4 de 10 (Dir-Leon Leonar...   \n",
+       "296         296  Desde su título no inspirado a las actuaciones...   \n",
+       "297         297  Encontré a esta buena película para pasar su t...   \n",
+       "298         298  Solía ​​trabajar en la compañía que originalme...   \n",
+       "299         299  La dama en cemento es un verdadero curso sobre...   \n",
+       "\n",
+       "    sentimiento_NaiveBayes sentimiento_RandomForest  \n",
+       "0                 positivo                 positivo  \n",
+       "1                 positivo                 positivo  \n",
+       "2                 positivo                 positivo  \n",
+       "3                 positivo                 positivo  \n",
+       "4                 positivo                 positivo  \n",
+       "..                     ...                      ...  \n",
+       "295               negativo                 negativo  \n",
+       "296               negativo                 negativo  \n",
+       "297               positivo                 negativo  \n",
+       "298               negativo                 negativo  \n",
+       "299               positivo                 positivo  \n",
+       "\n",
+       "[300 rows x 4 columns]"
+      ]
+     },
+     "execution_count": 34,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Visualizar los resultados\n",
+    "reviews_test"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4.2 KNN (Nathalia Quiroga)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Pipeline"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "La creación del pipeline se hace únicamente con dos procesos. \n",
+    "\n",
+    "El primero, es el transformador que estandariza los comentarios con el mismo proceso que los dos modelos anteriores con la funcion 'clean_text'. Sin embargo, este al igual que Bayes utiliza el metodo de TFIDVECTORIZER ya que es una técnica de vectorización en el procesamiento de lenguaje natural que tiene en cuenta tanto la frecuencia de ocurrencia de una palabra en un documento como su frecuencia de ocurrencia en todo el conjunto de documentos. Esto permite que las palabras que aparecen con frecuencia en un documento específico pero raramente en el resto de los documentos tengan una puntuación más alta, lo que las hace más significativas para la representación de ese documento. TF-IDF Vectorizer también tiene un mejor rendimiento que CountVectorizer en la tarea de clasificación de documentos, ya que las palabras únicas en un documento pueden ser más importantes para la clasificación. \n",
+    "\n",
+    "El segundo proceso, como se dijo anteriormente, ya es la creación del modelo y el pipeline usando KNN, además de esto, más adelante se explica cómo se reduce la diemensionalidad del KNN para unas mejores métricas. Se usó este algoritmo ya que puede ser utilizado para la clasificación de texto, donde cada documento (o conjuno de palabras que forman una unidad de texto) se representa como un vector de características y se compara con los documentos de entrenamiento existentes. El documento se clasifica según la clase predominante de los vecinos más cercanos."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "TruncatedSVD es una técnica que reduce la dimensionalidad de los datos de alta dimensión al comprimirlos en un espacio de menor dimensión, al mismo tiempo que conserva la información relevante. Esta técnica se utiliza especialmente para manejar entradas dispersas o \"sparse input\". En el procesamiento de lenguaje natural, TruncatedSVD se utiliza comúnmente para reducir la dimensionalidad de los vectores de características que representan palabras o documentos, como aquellos obtenidos con CountVectorizer o TfidfVectorizer. Al reducir la dimensionalidad de los datos, TruncatedSVD puede mejorar la eficiencia computacional y disminuir el tiempo de entrenamiento de los modelos de aprendizaje automático, y además puede ayudar a prevenir el sobreajuste y reducir el ruido en los datos.\n",
+    "\n",
+    "Asimismo, se delimitó el numero de palabras significantes a 1800 puesto que luego de hacer pruebas fue el numero máximo que dio mejor resultado."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Por último, \"n_components\" es un parámetro que especifica el número de dimensiones que se deben mantener después de aplicar la técnica de reducción de dimensionalidad. Es decir, \"n_components\" determina el tamaño de la matriz resultante después de aplicar TruncatedSVD.\n",
+    "\n",
+    "Este parámetro se utiliza para controlar el equilibrio entre la cantidad de información que se mantiene en los datos y la cantidad de reducción de dimensionalidad deseada."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 35,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "pipe = Pipeline([\n",
+    "                ('tfidf', TfidfVectorizer(preprocessor=clean_text, max_features=1800)),\n",
+    "                ('svd', TruncatedSVD(n_components=28)),\n",
+    "                ('model', KNeighborsClassifier())\n",
+    "])"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Para escoger el \"n_components\" se realizó un tanteo de valores entre 5-50 para evaluar el cambio de las métricas en cada caso y así lograr el más acertado."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 5.2 Ejecución y análisis KNN"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Entrenamiento del modelo"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Se hace una separación de los datos en entrenamiento y prueba. El X son las variables de decisión y el Y lo que se busca predecir."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 36,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Separacion de las variables de decision y de prediccion\n",
+    "X = reviews['review_es']\n",
+    "Y = reviews['sentimiento']"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "La separación se hace 80% para etrenamiento y 20% para prueba."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 37,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Creacion de los conjuntos de entrenamiento y prueba\n",
+    "X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=0)\n",
+    "y_train = y_train.values.ravel()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Se le pasa al pipeline los datos de entrenamiento"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 38,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Entrenamiento del modelo\n",
+    "model = pipe.fit(X_train, y_train)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Análisis de métricas"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 39,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Realizar predicciones en el conjunto de entrenaiento y prueba\n",
+    "y_train_pred = model.predict(X_train)\n",
+    "y_test_pred = model.predict(X_test)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 40,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Calcular las metricas de evaluacion\n",
+    "KNN_train_accuracy = accuracy_score(y_train, y_train_pred)\n",
+    "KNN_train_precision = precision_score(y_train, y_train_pred, pos_label='positivo')\n",
+    "KNN_train_recall = recall_score(y_train, y_train_pred, pos_label='positivo')\n",
+    "KNN_train_f1 = f1_score(y_train, y_train_pred, pos_label='positivo')\n",
+    "\n",
+    "KNN_test_accuracy = accuracy_score(y_test, y_test_pred)\n",
+    "KNN_test_precision = precision_score(y_test, y_test_pred, pos_label='positivo')\n",
+    "KNN_test_recall = recall_score(y_test, y_test_pred, pos_label='positivo')\n",
+    "KNN_test_f1 = f1_score(y_test, y_test_pred, pos_label='positivo')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Según las métricas podemos ver que el modelo se ajustó bien a los datos de entrenamiento y el sobreajuste no es exagerado. Sin embargo, los resultados de evaluación son considerablemente inferiores respecto a los otros modelos implementados (no superan el 70%). Por lo que, puede afirmarse que este no es un buen modelo para resolver el problema actual"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 41,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "\n",
+      "Metricas del conjunto de entrenamiento:\n",
+      "Accuracy: 0.80525\n",
+      "Precision: 0.7938388625592417\n",
+      "Recall: 0.8296186230807331\n",
+      "F1 score: 0.8113344635504965\n",
+      "\n",
+      "Metricas del conjunto de prueba:\n",
+      "Accuracy: 0.691\n",
+      "Precision: 0.6641221374045801\n",
+      "Recall: 0.7234927234927235\n",
+      "F1 score: 0.6925373134328358\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Imprimir las metricas de evaluacion\n",
+    "print('\\nMetricas del conjunto de entrenamiento:')\n",
+    "print(\"Accuracy:\",  KNN_train_accuracy)\n",
+    "print(\"Precision:\", KNN_train_precision)\n",
+    "print(\"Recall:\",    KNN_train_recall)\n",
+    "print(\"F1 score:\",  KNN_train_f1)\n",
+    "\n",
+    "# Imprimir las metricas de evaluacion\n",
+    "print('\\nMetricas del conjunto de prueba:')\n",
+    "print(\"Accuracy:\",  KNN_test_accuracy)\n",
+    "print(\"Precision:\", KNN_test_precision)\n",
+    "print(\"Recall:\",    KNN_test_recall)\n",
+    "print(\"F1 score:\",  KNN_test_f1)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 6.2 Exportar el modelo KNN"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Finalmente se exporta el modelo para que pueda ser utilizado en otro conjunto de datos"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 42,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "['pipelineKNN.joblib']"
+      ]
+     },
+     "execution_count": 42,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Nombre del archivo donde se guardara el modelo\n",
+    "pipe_file_name = 'pipelineKNN.joblib'\n",
+    "\n",
+    "# Guardar el modelo\n",
+    "dump(model, pipe_file_name)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 43,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "Pipeline(steps=[('tfidf',\n",
+       "                 TfidfVectorizer(max_features=1800,\n",
+       "                                 preprocessor=<function clean_text at 0x7ff3586013a0>)),\n",
+       "                ('svd', TruncatedSVD(n_components=28)),\n",
+       "                ('model', KNeighborsClassifier())])"
+      ]
+     },
+     "execution_count": 43,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Cargar el modelo\n",
+    "test_model = load(pipe_file_name)\n",
+    "test_model"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 44,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Clasificar los datos de prueba\n",
+    "reviews_test['sentimiento_KNN'] = test_model.predict(reviews_test['review_es'])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 45,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>Unnamed: 0</th>\n",
+       "      <th>review_es</th>\n",
+       "      <th>sentimiento_NaiveBayes</th>\n",
+       "      <th>sentimiento_RandomForest</th>\n",
+       "      <th>sentimiento_KNN</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>0</td>\n",
+       "      <td>La saga medieval alemana de Fritz Lang continú...</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>1</td>\n",
+       "      <td>Este anime es una visita obligada para los fan...</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>2</td>\n",
+       "      <td>Esta es una de las mejores películas para masc...</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>3</td>\n",
+       "      <td>Cuando se lanzó su DVD, llegué al mercado y lo...</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>4</td>\n",
+       "      <td>No me he reído tan duro en una película en muc...</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>negativo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>...</th>\n",
+       "      <td>...</td>\n",
+       "      <td>...</td>\n",
+       "      <td>...</td>\n",
+       "      <td>...</td>\n",
+       "      <td>...</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>295</th>\n",
+       "      <td>295</td>\n",
+       "      <td>1er vimos 2/18/2007 - 4 de 10 (Dir-Leon Leonar...</td>\n",
+       "      <td>negativo</td>\n",
+       "      <td>negativo</td>\n",
+       "      <td>negativo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>296</th>\n",
+       "      <td>296</td>\n",
+       "      <td>Desde su título no inspirado a las actuaciones...</td>\n",
+       "      <td>negativo</td>\n",
+       "      <td>negativo</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>297</th>\n",
+       "      <td>297</td>\n",
+       "      <td>Encontré a esta buena película para pasar su t...</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>negativo</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>298</th>\n",
+       "      <td>298</td>\n",
+       "      <td>Solía ​​trabajar en la compañía que originalme...</td>\n",
+       "      <td>negativo</td>\n",
+       "      <td>negativo</td>\n",
+       "      <td>negativo</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>299</th>\n",
+       "      <td>299</td>\n",
+       "      <td>La dama en cemento es un verdadero curso sobre...</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "      <td>positivo</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "<p>300 rows × 5 columns</p>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "     Unnamed: 0                                          review_es  \\\n",
+       "0             0  La saga medieval alemana de Fritz Lang continú...   \n",
+       "1             1  Este anime es una visita obligada para los fan...   \n",
+       "2             2  Esta es una de las mejores películas para masc...   \n",
+       "3             3  Cuando se lanzó su DVD, llegué al mercado y lo...   \n",
+       "4             4  No me he reído tan duro en una película en muc...   \n",
+       "..          ...                                                ...   \n",
+       "295         295  1er vimos 2/18/2007 - 4 de 10 (Dir-Leon Leonar...   \n",
+       "296         296  Desde su título no inspirado a las actuaciones...   \n",
+       "297         297  Encontré a esta buena película para pasar su t...   \n",
+       "298         298  Solía ​​trabajar en la compañía que originalme...   \n",
+       "299         299  La dama en cemento es un verdadero curso sobre...   \n",
+       "\n",
+       "    sentimiento_NaiveBayes sentimiento_RandomForest sentimiento_KNN  \n",
+       "0                 positivo                 positivo        positivo  \n",
+       "1                 positivo                 positivo        positivo  \n",
+       "2                 positivo                 positivo        positivo  \n",
+       "3                 positivo                 positivo        positivo  \n",
+       "4                 positivo                 positivo        negativo  \n",
+       "..                     ...                      ...             ...  \n",
+       "295               negativo                 negativo        negativo  \n",
+       "296               negativo                 negativo        positivo  \n",
+       "297               positivo                 negativo        positivo  \n",
+       "298               negativo                 negativo        negativo  \n",
+       "299               positivo                 positivo        positivo  \n",
+       "\n",
+       "[300 rows x 5 columns]"
+      ]
+     },
+     "execution_count": 45,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Visualizar los resultados\n",
+    "reviews_test"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 7. Comparación de los modelos"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 46,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Creacion del dataframe con las metricas de evaluacion para cada algoritmo utilizado\n",
+    "metricas = {\n",
+    "    'Algoritmo': ['Naive Bayes', 'Random Forest', 'KNN'],\n",
+    "    'Accuracy': [NB_test_accuracy, RF_test_accuracy, KNN_test_accuracy],\n",
+    "    'Precision': [NB_test_precision, RF_test_precision, KNN_test_precision],\n",
+    "    'Recall': [NB_test_recall, RF_test_recall, KNN_test_recall],\n",
+    "    'F1 score': [NB_test_f1, RF_test_f1, KNN_test_f1]\n",
+    "}\n",
+    "\n",
+    "pruebas = {\n",
+    "    'Algoritmo': ['Naive Bayes', 'Random Forest', 'KNN'],\n",
+    "    'Accuracy': [NB_train_accuracy, RF_train_accuracy, KNN_train_accuracy],\n",
+    "    'Precision': [NB_train_precision, RF_train_precision, KNN_train_precision],\n",
+    "    'Recall': [NB_train_recall, RF_train_recall, KNN_train_recall],\n",
+    "    'F1 score': [NB_train_f1, RF_train_f1, KNN_train_f1]\n",
+    "}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 47,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Pasar el diccionario a un dataframe\n",
+    "metricas_df = pd.DataFrame(metricas)\n",
+    "pruebas_df = pd.DataFrame(pruebas)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 48,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>Algoritmo</th>\n",
+       "      <th>Accuracy</th>\n",
+       "      <th>Precision</th>\n",
+       "      <th>Recall</th>\n",
+       "      <th>F1 score</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>Naive Bayes</td>\n",
+       "      <td>0.86900</td>\n",
+       "      <td>0.859202</td>\n",
+       "      <td>0.885587</td>\n",
+       "      <td>0.872195</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>Random Forest</td>\n",
+       "      <td>1.00000</td>\n",
+       "      <td>1.000000</td>\n",
+       "      <td>1.000000</td>\n",
+       "      <td>1.000000</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>KNN</td>\n",
+       "      <td>0.80525</td>\n",
+       "      <td>0.793839</td>\n",
+       "      <td>0.829619</td>\n",
+       "      <td>0.811334</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "       Algoritmo  Accuracy  Precision    Recall  F1 score\n",
+       "0    Naive Bayes   0.86900   0.859202  0.885587  0.872195\n",
+       "1  Random Forest   1.00000   1.000000  1.000000  1.000000\n",
+       "2            KNN   0.80525   0.793839  0.829619  0.811334"
+      ]
+     },
+     "execution_count": 48,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "pruebas_df"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 49,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>Algoritmo</th>\n",
+       "      <th>Accuracy</th>\n",
+       "      <th>Precision</th>\n",
+       "      <th>Recall</th>\n",
+       "      <th>F1 score</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>Naive Bayes</td>\n",
+       "      <td>0.810</td>\n",
+       "      <td>0.796334</td>\n",
+       "      <td>0.812890</td>\n",
+       "      <td>0.804527</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>Random Forest</td>\n",
+       "      <td>0.775</td>\n",
+       "      <td>0.754980</td>\n",
+       "      <td>0.787942</td>\n",
+       "      <td>0.771109</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>KNN</td>\n",
+       "      <td>0.691</td>\n",
+       "      <td>0.664122</td>\n",
+       "      <td>0.723493</td>\n",
+       "      <td>0.692537</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "       Algoritmo  Accuracy  Precision    Recall  F1 score\n",
+       "0    Naive Bayes     0.810   0.796334  0.812890  0.804527\n",
+       "1  Random Forest     0.775   0.754980  0.787942  0.771109\n",
+       "2            KNN     0.691   0.664122  0.723493  0.692537"
+      ]
+     },
+     "execution_count": 49,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Visualizar el dataframe\n",
+    "metricas_df"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Conclusiones"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Con el fin de comprender cual fue el algoritmo que dio mejores resultados, primero hay que entender que evaluan cada una de las metricas que se calcularon. \n",
+    "- #### Accuracy:\n",
+    "    La exactitud es una medida que indica la proporción de predicciones correctas del modelo en relación con el total de predicciones. Se calcula dividiendo el número de predicciones correctas por el número total de predicciones. Una alta exactitud generalmente indica que el modelo está prediciendo correctamente la mayoría de los ejemplos.\n",
+    "\n",
+    "- #### Precicion:\n",
+    "    La precisión es la proporción de predicciones positivas verdaderas con respecto a todas las predicciones positivas (verdaderas y falsas). Se calcula dividiendo el número de predicciones positivas verdaderas por la suma de las predicciones positivas verdaderas y falsas. Una alta precisión indica que el modelo tiene pocos falsos positivos, es decir, pocas instancias negativas se predicen incorrectamente como positivas.\n",
+    "\n",
+    "- #### Recall:\n",
+    "    La sensibilidad es la proporción de predicciones positivas verdaderas con respecto a todas las instancias verdaderamente positivas. Se calcula dividiendo el número de predicciones positivas verdaderas por la suma de las predicciones positivas verdaderas y falsas negativas. Una alta sensibilidad indica que el modelo tiene pocos falsos negativos, es decir, pocas instancias positivas se predicen incorrectamente como negativas.\n",
+    "\n",
+    "- #### F1\n",
+    "    El valor F1 es una medida que combina la precisión y la sensibilidad en una sola métrica. Se calcula como la media armónica de la precisión y la sensibilidad, y proporciona una medida equilibrada del rendimiento del modelo en términos de tanto los falsos positivos como los falsos negativos. Un valor F1 alto indica un buen equilibrio entre la precisión y la sensibilidad."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Segun los resultados, el modelo que tuvo mejores metricas tuvo fue el de Naive Bayes. Empezando por la exactitud, se aprecia que empleando este algoritmo se logra predecir correctamente el 80% de los comentarios, en otras palabras, se tiene la certeza que para cada 5 comentarios, 4 de ellos seran correctamente clasificados en positivo o negativo. De esta manera, para los productores de las peliculas se les asegura con un alto grado de confiabilidad que sabran si la critica es buena o mala para su respectivo analisis. Por otro lado, mirando la precision observamos que el 80% de las predicciones positivas realizadas por el modelo son verdaderas, en relación con el total de predicciones positivas (verdaderas y falsas). En otras palabras, de cada 100 predicciones positivas hechas por el modelo, aproximadamente 80 son correctas. En general, viendo que todas las metricas arrojaron valores aproximados del 80% se puede concluir que el modelo de Naive Bayes resulto bastante adecuado y sus predicciones son considerablemente buenas."
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.8.5"
+  },
+  "vscode": {
+   "interpreter": {
+    "hash": "4b9910b8858ec50ccb27abd2ce94b808f319d724385ab9288ec5e4f3427bc7af"
+   }
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
