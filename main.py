@@ -25,4 +25,4 @@ def make_predictions(dataModel: DataModel):
     df.columns = dataModel.columns()
     model = load("assets/NaiveBayes.joblib")
     result = model.predict(df)
-    return result
+    return result[0]
