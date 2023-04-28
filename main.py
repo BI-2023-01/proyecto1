@@ -23,6 +23,6 @@ def read_item(item_id: int, q: Optional[str] = None):
 def make_predictions(dataModel: DataModel):
     df = pd.DataFrame(dataModel.dict(), columns=dataModel.dict().keys(), index=[0])
     df.columns = dataModel.columns()
-    model = load("assets/pipelineNaiveBayes.joblib")
+    model = load("assets/NaiveBayes.joblib")
     result = model.predict(df)
-    return result
+    return result[0]
