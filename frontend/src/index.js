@@ -4,14 +4,12 @@ import { ChakraProvider } from "@chakra-ui/react";
 
 import Header from "./components/Header";
 import Texto from "./components/cuadroTexto";
-import Boton from "./components/boton";
 
 function App() {
   return (
     <ChakraProvider>
       <Header />
       <Texto />
-      <Boton />
     </ChakraProvider>
   )
 }

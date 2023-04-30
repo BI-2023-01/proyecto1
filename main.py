@@ -26,6 +26,17 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
+todos = [
+    {
+        "id": "1",
+        "item": "Read a book."
+    },
+    {
+        "id": "2",
+        "item": "Cycle around town."
+    }
+]
+
 @app.get("/")
 def read_root():
    return {"Hello": "World"}
@@ -41,3 +52,7 @@ def make_predictions(dataModel: DataModel):
     model = load("assets/NaiveBayes.joblib")
     result = model.predict(df)
     return result[0]
+
+@app.get("/todo", tags=["todos"])
+async def get_todos() -> dict:
+    return { "data": todos }

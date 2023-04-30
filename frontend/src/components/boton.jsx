@@ -10,7 +10,7 @@ function Button() {
         height: '0vh',
       }}
     >
-      <button
+      <button onClick = "guardar()"
         style={{
           backgroundColor: "#113251",
           color: 'white',
@@ -22,6 +22,7 @@ function Button() {
         }}
       >
         Recibir predicción
+        
       </button>
     </div>
   );
